@@ -1,0 +1,9 @@
+{
+  "name": "kitchen-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Static SPA with Netlify Functions for Claude API + Airtable + Push notifications",
+  "dependencies": {
+    "web-push": "^3.6.7"
+  }
+}

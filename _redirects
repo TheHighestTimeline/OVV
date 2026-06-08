@@ -1,0 +1,94 @@
+// Kitchen Agent — Push Notification Sender (Netlify Function)
+// SETUP:
+//   1. Generate a VAPID keypair: npx web-push generate-vapid-keys
+//   2. In Netlify dashboard → Site settings → Environment variables, add:
+//        VAPID_PUBLIC_KEY  = <publishable key, also used by the client>
+//        VAPID_PRIVATE_KEY = <private key>
+//        VAPID_SUBJECT     = mailto:you@example.com
+//   3. (Optional) Add a scheduled function or external cron to POST to
+//        /.netlify/functions/notifications-batch
+//      once a day so reminders fire even when the app is closed.
+//
+// Until the env vars are set, this endpoint returns a friendly "not configured"
+// response. The in-app reminder system continues to work without it.
+//
+// POST body shape:
+// {
+//   "subscription": { "endpoint": "...", "keys": { "p256dh": "...", "auth": "..." } },
+//   "payload": { "title": "Thaw the chicken tonight", "body": "Tomorrow's plan needs it", "tag": "thaw-...", "url": "/" }
+// }
+
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+exports.handler = async (event) => {
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 200, headers: CORS_HEADERS, body: '' };
+  }
+  const headers = { ...CORS_HEADERS, 'Content-Type': 'application/json' };
+
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method Not Allowed' }) };
+  }
+
+  const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY;
+  const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY;
+  const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:hello@example.com';
+
+  if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        configured: false,
+        publicKey: null,
+        message: 'Push not configured. Add VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY env vars in Netlify to enable real push.',
+      }),
+    };
+  }
+
+  // Lightweight GET-style probe (POST with no body): return public key for client subscribe
+  let body;
+  try { body = JSON.parse(event.body || '{}'); }
+  catch { return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid JSON body' }) }; }
+
+  if (!body.subscription) {
+    // Probe — return the publishable key
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({ configured: true, publicKey: VAPID_PUBLIC }),
+    };
+  }
+
+  // Send push. We use the web-push library if installed; otherwise fall back to a manual implementation
+  // that uses crypto.subtle (only works for some browsers and only for fcm endpoints — keeping web-push as the
+  // recommended path).
+  let webpush;
+  try { webpush = require('web-push'); }
+  catch (e) {
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({
+        error: 'web-push package not installed. Run `npm install web-push` in your project root and re-deploy.',
+        hint: 'Add `web-push` to package.json so Netlify includes it during the function build.',
+      }),
+    };
+  }
+
+  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
+  try {
+    const result = await webpush.sendNotification(body.subscription, JSON.stringify(body.payload || {}));
+    return { statusCode: 200, headers, body: JSON.stringify({ ok: true, result }) };
+  } catch (e) {
+    return {
+      statusCode: e.statusCode || 500,
+      headers,
+      body: JSON.stringify({ error: e.message, body: e.body }),
+    };
+  }
+};

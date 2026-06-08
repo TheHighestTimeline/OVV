@@ -1,0 +1,19 @@
+# Kitchen Agent — Environment Variables
+# Copy this file to .env and fill in your values
+# The .env file is used by the local Python server (server.py)
+# These same variables must also be added to Netlify → Site → Environment variables
+
+# ── Anthropic Claude API ─────────────────────────────────────────────────────
+# Get yours at: https://console.anthropic.com/settings/keys
+ANTHROPIC_API_KEY=sk-ant-api03-YOUR-KEY-HERE
+
+# ── Composio (Instacart shoppable list creation) ─────────────────────────────
+# 1. Sign up at https://app.composio.dev
+# 2. Go to Settings → API Keys → Generate
+# 3. Paste the key below
+# 4. Also connect your Instacart account: Dashboard → Apps → Instacart → Connect
+COMPOSIO_API_KEY=your-composio-api-key-here
+
+# ── Optional: Local API server port ─────────────────────────────────────────
+# Default is 8765. Only change if something else uses that port.
+# KA_API_PORT=8765

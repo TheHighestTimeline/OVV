@@ -1,0 +1,12 @@
+# Sensitive auth — never commit
+instacart_auth.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# OS
+.DS_Store
+Thumbs.db

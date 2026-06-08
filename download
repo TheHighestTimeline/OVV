@@ -1,0 +1,185 @@
+// Kitchen Agent — Real-Time Price Lookup (Netlify Function)
+// Pluggable price-source layer. Returns the best-effort price for an ingredient
+// across whichever retailers the operator has wired keys for. Falls back to the
+// app's seeded estimate when nothing is configured.
+//
+// SETUP (any combination of these — wire what you want):
+//
+// Kroger Developer API (free tier, ~10k calls/day for one chain):
+//   1. Create a free account at https://developer.kroger.com
+//   2. Create an app with scopes: product.compact
+//   3. In Netlify env: KROGER_CLIENT_ID, KROGER_CLIENT_SECRET, KROGER_LOCATION_ID
+//      (locationId is the specific store id; use Kroger's Locations API to find one near you)
+//
+// Walmart Affiliate API (requires Walmart partnership approval):
+//   - Set WALMART_AFFILIATE_KEY env var.
+//   - Note: most non-partners will not get approved. Don't count on this one.
+//
+// SerpAPI (paid; works without retailer partnership; covers Walmart, Target, Amazon Fresh, etc.):
+//   - https://serpapi.com → $50/mo entry tier → SERPAPI_KEY env var.
+//
+// POST body:  { "ingredient": "chicken breast", "stores": ["kroger","walmart"], "zip": "33602" }
+// Response:   { "results": [{ "store": "kroger", "price": 3.99, "unit": "lb", "label": "Chicken Breast", "source": "kroger_api" }, ...] }
+//
+// All sources are tried in parallel. If none are configured, returns { results: [], configured: false }.
+
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+// ── Source: Kroger Developer API ─────────────────────────────────────
+let krogerToken = { value: null, expires_at: 0 };
+async function krogerGetToken() {
+  if (krogerToken.value && krogerToken.expires_at > Date.now()) return krogerToken.value;
+  const id = process.env.KROGER_CLIENT_ID;
+  const secret = process.env.KROGER_CLIENT_SECRET;
+  if (!id || !secret) return null;
+  const auth = Buffer.from(id + ':' + secret).toString('base64');
+  const res = await fetch('https://api.kroger.com/v1/connect/oauth2/token', {
+    method: 'POST',
+    headers: {
+      Authorization: 'Basic ' + auth,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: 'grant_type=client_credentials&scope=product.compact',
+  });
+  if (!res.ok) return null;
+  const d = await res.json();
+  krogerToken = { value: d.access_token, expires_at: Date.now() + (d.expires_in - 60) * 1000 };
+  return krogerToken.value;
+}
+
+async function lookupKroger(ingredient, locationId) {
+  const token = await krogerGetToken();
+  if (!token) return null;
+  const loc = locationId || process.env.KROGER_LOCATION_ID;
+  if (!loc) return null;
+  const url = new URL('https://api.kroger.com/v1/products');
+  url.searchParams.set('filter.term', ingredient);
+  url.searchParams.set('filter.locationId', loc);
+  url.searchParams.set('filter.limit', '5');
+  const res = await fetch(url.toString(), { headers: { Authorization: 'Bearer ' + token } });
+  if (!res.ok) return null;
+  const d = await res.json();
+  const items = d?.data || [];
+  if (!items.length) return null;
+  // Pick the cheapest unit-priced match
+  let best = null;
+  for (const it of items) {
+    const p = it?.items?.[0]?.price;
+    if (!p) continue;
+    const price = p.promo || p.regular;
+    if (!price) continue;
+    if (!best || price < best.price) {
+      best = {
+        store: 'kroger',
+        price,
+        unit: it.items[0].size || 'each',
+        label: it.description,
+        source: 'kroger_api',
+        on_sale: !!p.promo && p.promo < p.regular,
+      };
+    }
+  }
+  return best;
+}
+
+// ── Source: Walmart Affiliate (basic search) ─────────────────────────
+async function lookupWalmart(ingredient) {
+  const key = process.env.WALMART_AFFILIATE_KEY;
+  if (!key) return null;
+  // Walmart Open API endpoint (only works if you're an approved affiliate).
+  const url = `https://api.walmartlabs.com/v1/search?apiKey=${encodeURIComponent(key)}&query=${encodeURIComponent(ingredient)}&numItems=5`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const d = await res.json();
+    const item = (d.items || [])[0];
+    if (!item) return null;
+    return {
+      store: 'walmart',
+      price: item.salePrice || item.msrp,
+      unit: 'each',
+      label: item.name,
+      source: 'walmart_affiliate_api',
+      on_sale: item.salePrice && item.salePrice < (item.msrp || Infinity),
+    };
+  } catch { return null; }
+}
+
+// ── Source: SerpAPI (Walmart shopping search) ────────────────────────
+async function lookupSerpapi(ingredient, store) {
+  const key = process.env.SERPAPI_KEY;
+  if (!key) return null;
+  const engine = store === 'walmart' ? 'walmart' : 'google_shopping';
+  const url = new URL('https://serpapi.com/search.json');
+  url.searchParams.set('engine', engine);
+  url.searchParams.set('q', ingredient);
+  url.searchParams.set('api_key', key);
+  if (engine === 'google_shopping') url.searchParams.set('num', '5');
+  try {
+    const res = await fetch(url.toString());
+    if (!res.ok) return null;
+    const d = await res.json();
+    const list = d.organic_results || d.shopping_results || d.products_results || [];
+    const first = list[0];
+    if (!first) return null;
+    const priceStr = String(first.primary_offer?.offer_price || first.price || '').replace(/[^0-9.]/g, '');
+    const price = parseFloat(priceStr);
+    if (!price) return null;
+    return {
+      store: store || 'serpapi',
+      price,
+      unit: 'each',
+      label: first.title || ingredient,
+      source: 'serpapi_' + engine,
+      url: first.product_page_url || first.link || null,
+    };
+  } catch { return null; }
+}
+
+// ── Source: Browserless.io (renders real Chrome, extracts price from any retailer) ──
+// Browserless's /content endpoint returns the fully-rendered HTML of any URL.
+// We then run a simple price regex over it. Works for Walmart, Amazon, Target, etc.
+async function lookupBrowserless(ingredient, retailer) {
+  const key = process.env.BROWSERLESS_API_KEY;
+  if (!key) return null;
+  // Map retailer → search URL
+  const searchUrls = {
+    walmart: `https://www.walmart.com/search?q=${encodeURIComponent(ingredient)}`,
+    amazon:  `https://www.amazon.com/s?k=${encodeURIComponent(ingredient)}&i=grocery`,
+    target:  `https://www.target.com/s?searchTerm=${encodeURIComponent(ingredient)}`,
+    aldi:    `https://www.aldi.us/en/products/search/?q=${encodeURIComponent(ingredient)}`,
+  };
+  const url = searchUrls[retailer] || searchUrls.walmart;
+  try {
+    const res = await fetch(`https://chrome.browserless.io/content?token=${encodeURIComponent(key)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, waitFor: 1500 }),
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    // Extract first dollar-formatted price near a product title
+    const priceMatch = html.match(/\$\s?(\d+(?:\.\d{2})?)/);
+    const labelMatch = html.match(/<span[^>]*data-automation-id="product-title"[^>]*>([^<]+)<\/span>/)
+                   || html.match(/<h2[^>]*aria-label="([^"]+)"/)
+                   || html.match(/<a[^>]*"product-title-link[^>]*>([^<]+)/);
+    if (!priceMatch) return null;
+    const price = parseFloat(priceMatch[1]);
+    if (!price || price > 500) return null; // sanity bound
+    return {
+      store: retailer || 'walmart',
+      price,
+      unit: 'each',
+      label: (labelMatch && labelMatch[1].slice(0, 80)) || ingredient,
+      source: 'browserless_' + (retailer || 'walmart'),
+      url,
+    };
+  } catch { return null; }
+}
+
+// ── Source: Apify (pre-built Walmart/Amazon scrapers, pay-per-result) ────────
+// Uses Apify's "synchronous" actor runs. Token from apify
