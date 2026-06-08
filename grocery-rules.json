@@ -1,0 +1,122 @@
+{
+  "defaultMinConfidence": 0.9,
+  "items": [
+    {
+      "match": ["pickled beets", "sliced pickled beets"],
+      "action": "reject",
+      "label": "pickled_beets"
+    },
+    {
+      "match": ["tzatziki", "cucumber dill tzatziki", "tzatziki dip"],
+      "action": "reject",
+      "label": "tzatziki"
+    },
+    {
+      "match": ["dip", "deli dip", "vegetable dip"],
+      "action": "reject",
+      "label": "dip"
+    },
+    {
+      "match": ["eggs", "large eggs", "grade a large eggs"],
+      "action": "order",
+      "label": "eggs"
+    },
+    {
+      "match": ["red grapes", "grapes"],
+      "action": "order",
+      "label": "red_grapes"
+    },
+    {
+      "match": ["avocados", "organic avocados", "avocado bag"],
+      "action": "order",
+      "label": "avocados"
+    },
+    {
+      "match": ["cucumber", "whole cucumber", "cucumbers"],
+      "exclude": ["tzatziki", "dip", "deli", "dill", "sauce", "spread", "salad"],
+      "action": "order",
+      "label": "cucumber"
+    },
+    {
+      "match": ["red delicious apples", "red apples", "apples bag"],
+      "action": "order",
+      "label": "red_apples"
+    },
+    {
+      "match": ["celery", "celery package"],
+      "action": "order",
+      "label": "celery"
+    },
+    {
+      "match": ["spinach", "flat leaf spinach"],
+      "action": "order",
+      "label": "spinach"
+    },
+    {
+      "match": ["lemon juice", "100% lemon juice"],
+      "action": "order",
+      "label": "lemon_juice"
+    },
+    {
+      "match": ["parsley", "flat leaf parsley"],
+      "action": "order",
+      "label": "parsley"
+    },
+    {
+      "match": ["garlic", "peeled garlic"],
+      "action": "order",
+      "label": "garlic"
+    },
+    {
+      "match": ["crackers", "clubhouse crackers"],
+      "action": "order",
+      "label": "crackers"
+    },
+    {
+      "match": ["carrots", "peeled carrots", "baby carrots"],
+      "action": "order_if_in_stock",
+      "label": "carrots"
+    },
+    {
+      "match": ["roasted red pepper hummus"],
+      "action": "order",
+      "label": "hummus"
+    },
+    {
+      "match": ["hummus"],
+      "exclude": ["roasted red pepper hummus"],
+      "action": "order_optional",
+      "label": "hummus_optional"
+    },
+    {
+      "match": ["kale", "chopped kale"],
+      "action": "skip",
+      "label": "kale"
+    },
+    {
+      "match": ["cilantro"],
+      "action": "skip",
+      "label": "cilantro"
+    },
+    {
+      "match": ["zucchini"],
+      "action": "skip",
+      "label": "zucchini"
+    },
+    {
+      "match": ["red onions", "red onion"],
+      "action": "skip",
+      "label": "red_onions"
+    },
+    {
+      "match": ["sweet potatoes", "sweet potato"],
+      "action": "skip",
+      "label": "sweet_potatoes"
+    },
+    {
+      "match": ["multi-colored peppers", "bell peppers", "peppers"],
+      "action": "skip",
+      "label": "peppers"
+    }
+  ]
+}
