@@ -1,6 +1,6 @@
-import { SignIn } from '@clerk/nextjs'
+import { SignUp } from '@clerk/nextjs'
 
-export default function SignInPage() {
+export default function SignUpPage() {
   return (
     <div className="min-h-screen bg-[#0a0b0d] flex flex-col items-center justify-center px-4">
       <div className="flex items-center gap-2 mb-8">
@@ -11,7 +11,7 @@ export default function SignInPage() {
         </div>
         <span className="text-xl font-bold text-white">KalshiBot</span>
       </div>
-      <SignIn
+      <SignUp
         appearance={{
           variables: {
             colorPrimary: '#00d17a',
