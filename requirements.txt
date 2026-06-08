@@ -1,26 +1,4 @@
-{
-  "name": "Kitchen Agent",
-  "short_name": "KA",
-  "description": "Your AI-powered kitchen planning assistant",
-  "start_url": "/",
-  "display": "standalone",
-  "background_color": "#fbf7f3",
-  "theme_color": "#fbf7f3",
-  "orientation": "portrait-primary",
-  "icons": [
-    {
-      "src": "https://api.iconify.design/twemoji/pot-of-food.svg",
-      "sizes": "192x192",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "https://api.iconify.design/twemoji/pot-of-food.svg",
-      "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    }
-  ],
-  "categories": ["food", "lifestyle", "productivity"],
-  "prefer_related_applications": false
-}
+requests>=2.31.0
+pandas>=2.0.0
+python-dotenv>=1.0.0
+feedparser>=6.0.0
